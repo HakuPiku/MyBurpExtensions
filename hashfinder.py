@@ -61,6 +61,7 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IHttpListener, IExt
             ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS
         )
         self._mainPanel.add(self.output, BorderLayout.SOUTH)
+        self._mainPanel.add(self.scroll_output)
         
         callbacks.addSuiteTab(self)
 
@@ -77,18 +78,21 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IHttpListener, IExt
                 
                 
                 requestsToAnalyze = self._callbacks.getProxyHistory()[-25:]
+                oldRequestParams=[]
                 for request in requestsToAnalyze:
                         requestUrl = self._helpers.analyzeRequest(request).getUrl()
                         if self._callbacks.isInScope(requestUrl):
                             if request.getRequest() != None:
                                 requestResponseList.append(self._helpers.bytesToString(request.getRequest()))
-          
+                                for p in self._helpers.analyzeRequest(request.getRequest()).getParameters():
+                                    oldRequestParams.append( p.getValue())
+        
                             if request.getResponse() != None:
                                 offset = self._helpers.analyzeRequest(request.getResponse()).getBodyOffset()
                                 requestResponseList.append(self._helpers.bytesToString(request.getResponse()[offset:]))
                     
                     
-                print(len(requestResponseList))
+                #print(len(requestResponseList))
 
                 
                 for param in allParams:
@@ -100,27 +104,39 @@ class BurpExtender(IBurpExtender, ITab, IContextMenuFactory, IHttpListener, IExt
                                 if {param.values()[0]:requestResponse} not in self.foundValues:
                                     self.output.text += param.values()[0] + " : \n " + requestResponse
                                     self.foundValues.append({param.values()[0]:requestResponse})
-                print("Finished")
+                #print("Finished")
             
             ### Look for opposite?
-            # hashLikeParams = [] 
-            # for param in allParams:
-            #     p = param.values()[0]
-            #     hashLike = False
-            #     if len(p)>=16 and len(p) <= 64:
-            #         try:
-            #             bytes.fromhex(p)
-            #             hashLike= True
-            #         except:
-            #             None
-            #         try:
-            #             base64.b64decode(p)
-            #             hashLike = True
-            #         except:
-            #             None
-            #     if hashLike:
-            #         hashLikeParams.append(param)
-                
+                hashLikeParams = [] 
+                for param in allParams:
+                    p = param.values()[0]
+                    #print(p)
+                    hashLike = False
+                    if len(p)>=16 and len(p) <= 64:
+                        try:
+                            binascii.unhexlify(p)
+                            hashLike= True
+                        except Exception as ext:
+                            None
+                            #print(ext)
+                        # try:
+                        #     base64.b64decode(p)
+                        #     hashLike = True
+                        # except:
+                        #     None
+                    if hashLike:
+                        hashLikeParams.append(param.values()[0])
+                    
+                    #print(hashLikeParams)
+                    if hashLikeParams != []:
+                        for hashLikeParam in hashLikeParams:
+                            for param in oldRequestParams:
+                                hashedValues = getValues(param)
+                                if hashLikeParam in hashedValues:
+                                    if {param:hashLikeParam} not in self.foundValues:
+                                        self.output.text += "Found a hash like param in the request with param " + hashLikeParam+ " : " + param + "\n"
+                                        self.foundValues.append({param:hashLikeParam})
+                                    #self.foundValues.append({param.values()[0]:requestResponse})	
 
 
 
